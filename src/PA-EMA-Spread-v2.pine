@@ -1,0 +1,51 @@
+//@version=6
+indicator("PA–EMA Spread (Smoothed) v2", shorttitle="PA–EMA Spread v2", overlay=false, max_lines_count=500, max_labels_count=500)
+
+// ========= Inputs =========
+src         = input.source(close, "Source")
+emaLen      = input.int(50, "Baseline EMA Length", minval=1)
+spreadMode  = input.string("Percent", "Spread Mode", options=["Percent","Points"])
+absValue    = input.bool(false, "Use Absolute Value (ignore sign)")
+
+smoothLen   = input.int(14, "Smoothing Length", minval=1)
+smoothType  = input.string("EMA", "Smoothing Type", options=["EMA","RMA","SMA","WMA"])
+showRaw     = input.bool(false, "Show Raw Spread (dotted)")
+
+// Threshold inputs (const defaults so they compile)
+thUpPct = input.float(2.0,   "Upper Threshold (%)",  step=0.1)
+thDnPct = input.float(-2.0,  "Lower Threshold (%)",  step=0.1)
+thUpPts = input.float(100.0, "Upper Threshold (pts)", step=1.0)
+thDnPts = input.float(-100.0,"Lower Threshold (pts)", step=1.0)
+
+// ========= Calculations =========
+emaBase = ta.ema(src, emaLen)
+spread  = spreadMode == "Percent" ? 100.0 * (src - emaBase) / emaBase : (src - emaBase)
+spread  := absValue ? math.abs(spread) : spread
+
+// Smoother (no return-type prefix in Pine)
+smooth(s) =>
+    switch smoothType
+        "EMA" => ta.ema(s, smoothLen)
+        "RMA" => ta.rma(s, smoothLen)
+        "SMA" => ta.sma(s, smoothLen)
+        "WMA" => ta.wma(s, smoothLen)
+
+smoothed = smooth(spread)
+
+// Choose thresholds for current mode (series so we can fill)
+thUp = spreadMode == "Percent" ? thUpPct : thUpPts
+thDn = spreadMode == "Percent" ? thDnPct : thDnPts
+
+// ========= Plots =========
+plot(0, title="Zero", color=color.new(color.gray, 85))
+upPlot = plot(thUp, title="Upper", color=color.new(color.green, 60), linewidth=1)
+dnPlot = plot(thDn, title="Lower", color=color.new(color.red,   60), linewidth=1)
+fill(upPlot, dnPlot, color=color.new(color.gray, 93))
+
+plot(showRaw ? spread : na, title="Raw Spread", style=plot.style_line, color=color.new(color.gray, 65))
+col = smoothed >= 0 ? color.new(color.teal, 0) : color.new(color.orange, 0)
+plot(smoothed, title="Smoothed Spread", linewidth=2, color=col)
+
+// ========= Alerts =========
+alertcondition(ta.crossover(smoothed, thUp),  title="Spread crossed ABOVE upper", message="PA–EMA spread crossed ABOVE upper threshold.")
+alertcondition(ta.crossunder(smoothed, thDn), title="Spread crossed BELOW lower", message="PA–EMA spread crossed BELOW lower threshold.")
